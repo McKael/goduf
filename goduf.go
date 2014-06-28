@@ -56,7 +56,7 @@ type fileObj struct {
 // FileObjList is only exported so that we can have a sort interface on inodes.
 type FileObjList []*fileObj
 
-type sizeClass struct {
+type sizeClass struct { // XXX still useful?
 	files    FileObjList
 	medsums  map[string]FileObjList
 	fullsums map[string]FileObjList
@@ -240,21 +240,31 @@ func (data *dataT) filesWithSameHash() (hgroups []FileObjList) {
 	return
 }
 
-func findDupesFullChecksums(fileList FileObjList) []FileObjList {
+func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 	var dupeList []FileObjList
 	hashes := make(map[string]FileObjList)
 
 	// Sort the list for better efficiency
 	sort.Sort(ByInode(fileList))
 
-	// Compute full checksums
+	// Compute checksums
 	for _, fo := range fileList {
-		if err := fo.Sum(fullChecksum); err != nil {
+		if err := fo.Sum(sType); err != nil {
 			myLog.Println(0, "Error:", err)
 			continue
 		}
-		hash := hex.EncodeToString(fo.Hash)
-		hashes[hash] = append(hashes[hash], fo)
+		var hbytes []byte
+		if sType == partialChecksum {
+			hbytes = fo.PartialHash
+		} else if sType == fullChecksum {
+			hbytes = fo.Hash
+		} else {
+			panic("Internal error: Invalid sType")
+		}
+		if hbytes != nil {
+			hash := hex.EncodeToString(hbytes)
+			hashes[hash] = append(hashes[hash], fo)
+		}
 	}
 
 	// Let's de-dupe now...
@@ -262,39 +272,12 @@ func findDupesFullChecksums(fileList FileObjList) []FileObjList {
 		if len(l) < 2 {
 			continue
 		}
-		dupeList = append(dupeList, l)
-		// TODO sort by increasing size
-		myLog.Printf(5, "  . found %d new duplicates\n", len(l))
-	}
-
-	return dupeList
-}
-
-// TODO: refactor to avoid code duplication
-func findDupesPartialChecksums(fileList FileObjList) []FileObjList {
-	var dupeList []FileObjList
-	hashes := make(map[string]FileObjList)
-
-	// Sort the list for better efficiency
-	sort.Sort(ByInode(fileList))
-
-	// Compute partial checksums
-	for _, fo := range fileList {
-		if err := fo.Sum(partialChecksum); err != nil {
-			myLog.Println(0, "Error:", err)
-			continue
+		if sType == partialChecksum {
+			dupeList = append(dupeList, l.findDupesChecksums(fullChecksum)...)
+		} else { // full checksums -> we’re done
+			dupeList = append(dupeList, l)
 		}
-		hash := hex.EncodeToString(fo.PartialHash)
-		hashes[hash] = append(hashes[hash], fo)
-	}
-
-	// Let's de-dupe now...
-	for _, l := range hashes {
-		if len(l) < 2 {
-			continue
-		}
-		dupeList = append(dupeList, findDupesFullChecksums(l)...)
-		// TODO sort by increasing size
+		// TODO: sort by increasing size
 	}
 
 	return dupeList
@@ -308,9 +291,9 @@ func (data *dataT) findDupes(skipPartial bool) []FileObjList {
 		var r []FileObjList
 		// We skip partial checksums for small files or if requested
 		if size > minSizePartialChecksum && !skipPartial {
-			r = findDupesPartialChecksums(sizeGroup.files)
+			r = sizeGroup.files.findDupesChecksums(partialChecksum)
 		} else {
-			r = findDupesFullChecksums(sizeGroup.files)
+			r = sizeGroup.files.findDupesChecksums(fullChecksum)
 		}
 		dupeList = append(dupeList, r...)
 	}
