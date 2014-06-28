@@ -14,10 +14,13 @@ func (a ByInode) Less(i, j int) bool {
 	return true
 }
 
+// OSHasInodes returns true iff the O.S. uses inodes for its filesystems.
 func OSHasInodes() bool {
 	return false
 }
 
+// GetDevIno returns the device and inode IDs of a given file.
+// This is not supported on Windows and Plan9.
 func GetDevIno(fi os.FileInfo) (uint64, uint64) {
 	return 0, 0 // Not supported
 }

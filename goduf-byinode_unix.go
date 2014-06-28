@@ -26,10 +26,12 @@ func (a ByInode) Less(i, j int) bool {
 	return iInode < jInode
 }
 
+// OSHasInodes returns true iff the O.S. uses inodes for its filesystems.
 func OSHasInodes() bool {
 	return true
 }
 
+// GetDevIno returns the device and inode IDs of a given file.
 func GetDevIno(fi os.FileInfo) (uint64, uint64) {
 	dev := fi.Sys().(*syscall.Stat_t).Dev
 	ino := fi.Sys().(*syscall.Stat_t).Ino
