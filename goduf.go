@@ -319,7 +319,7 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 			myLog.Printf(5, "  . found %d new duplicates\n", len(l))
 		}
 	}
-	if sType == partialChecksum {
+	if sType == partialChecksum && len(scheduleFull) > 0 {
 		var csList FileObjList
 		for _, fol := range scheduleFull {
 			csList = append(csList, fol...)
