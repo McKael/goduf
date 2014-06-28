@@ -410,7 +410,8 @@ func (data *dataT) dropEmptyFiles(ignoreEmpty bool) (emptyCount int) {
 	return
 }
 
-func (data *dataT) createSizeHash() (hardLinkCount, uniqueSizeCount int) {
+// initialCleanup() removes files with unique size as well as hard links
+func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 	for s, sizeGroup := range data.sizeGroups {
 		if len(sizeGroup.files) < 2 {
 			delete(data.sizeGroups, s)
@@ -421,11 +422,11 @@ func (data *dataT) createSizeHash() (hardLinkCount, uniqueSizeCount int) {
 		var hardlinksFound bool
 
 		// Check for hardlinks
-		// TODO: what about symlinks?
 		// Remove unique dev/inodes
 		// Instead of this loop, another way would be to use the field
 		// "Unique" of the fileObj to mark them to be discarded
 		// and remove them all at the end.
+		// TODO: what about symlinks?
 		for {
 			if !OSHasInodes() {
 				break
@@ -562,7 +563,7 @@ func main() {
 
 	// Remove unique sizes
 	myLog.Println(1, "* Removing files with unique size, sorting file lists...")
-	hardLinkCount, uniqueSizeCount := data.createSizeHash()
+	hardLinkCount, uniqueSizeCount := data.initialCleanup()
 	if verbose {
 		myLog.Printf(2, "  Dropped %d files with unique size\n",
 			uniqueSizeCount)
