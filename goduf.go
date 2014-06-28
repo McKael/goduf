@@ -420,9 +420,6 @@ func (data *dataT) createSizeHash() (hardLinkCount, uniqueSizeCount int) {
 
 		var hardlinksFound bool
 
-		// Sort by device/inodes
-		sort.Sort(ByInode(sizeGroup.files))
-
 		// Check for hardlinks
 		// TODO: what about symlinks?
 		// Remove unique dev/inodes
