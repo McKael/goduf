@@ -4,3 +4,4 @@ goduf
 goduf_*
 
 *.swp
+cscope.out
