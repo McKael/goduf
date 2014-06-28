@@ -300,6 +300,23 @@ func findDupesPartialChecksums(fileList FileObjList) []FileObjList {
 	return dupeList
 }
 
+// findDupes() uses checksums to find file duplicates
+func (data *dataT) findDupes(skipPartial bool) []FileObjList {
+	var dupeList []FileObjList
+
+	for size, sizeGroup := range data.sizeGroups {
+		var r []FileObjList
+		// We skip partial checksums for small files or if requested
+		if size > minSizePartialChecksum && !skipPartial {
+			r = findDupesPartialChecksums(sizeGroup.files)
+		} else {
+			r = findDupesFullChecksums(sizeGroup.files)
+		}
+		dupeList = append(dupeList, r...)
+	}
+	return dupeList
+}
+
 func (data *dataT) dropEmptyFiles(ignoreEmpty bool) (emptyCount int) {
 	sc, ok := data.sizeGroups[0]
 	if ok == false {
@@ -373,23 +390,6 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 		}
 	}
 	return
-}
-
-// findDupes() uses checksums to find file duplicates
-func (data *dataT) findDupes(skipPartial bool) []FileObjList {
-	var dupeList []FileObjList
-
-	for size, sizeGroup := range data.sizeGroups {
-		var r []FileObjList
-		// We skip partial checksums for small files or if requested
-		if size > minSizePartialChecksum && !skipPartial {
-			r = findDupesPartialChecksums(sizeGroup.files)
-		} else {
-			r = findDupesFullChecksums(sizeGroup.files)
-		}
-		dupeList = append(dupeList, r...)
-	}
-	return dupeList
 }
 
 func formatSize(sizeBytes uint64, short bool) string {
