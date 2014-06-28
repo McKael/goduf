@@ -41,7 +41,8 @@ const minSizePartialChecksum = 49152 // Should be > 3*medsumBytes
 type sumType int
 
 const (
-	fullChecksum sumType = iota
+	noChecksum sumType = iota
+	fullChecksum
 	partialChecksum
 )
 
@@ -51,6 +52,7 @@ type fileObj struct {
 	os.FileInfo
 	PartialHash []byte
 	Hash        []byte
+	needHash    sumType
 }
 
 // FileObjList is only exported so that we can have a sort interface on inodes.
@@ -209,6 +211,8 @@ func (fo *fileObj) Sum(sType sumType) error {
 		return fo.MedSum()
 	} else if sType == fullChecksum {
 		return fo.CheckSum()
+	} else if sType == noChecksum {
+		return nil
 	}
 	panic("Internal error: Invalid sType")
 }
@@ -240,8 +244,53 @@ func (data *dataT) filesWithSameHash() (hgroups []FileObjList) {
 	return
 }
 
+// checksum returns the requested checksum as a string.
+// If the checksum has not been pre-computed, it is calculated now.
+func (fo fileObj) checksum(sType sumType) (string, error) {
+	var hbytes []byte
+	if sType == partialChecksum {
+		hbytes = fo.PartialHash
+	} else if sType == fullChecksum {
+		hbytes = fo.Hash
+	} else {
+		panic("Internal error: Invalid sType")
+	}
+	if hbytes == nil {
+		if err := fo.Sum(sType); err != nil {
+			return "", err
+		}
+		if sType == partialChecksum {
+			hbytes = fo.PartialHash
+		} else if sType == fullChecksum {
+			hbytes = fo.Hash
+		}
+	}
+	return hex.EncodeToString(hbytes), nil
+}
+
+func (fileList FileObjList) computeSheduledChecksums() {
+	// Sort the list for better efficiency
+	sort.Sort(ByInode(fileList))
+
+	myLog.Printf(6, "  . will compute %d checksums\n", len(fileList))
+
+	// Compute checksums
+	for _, fo := range fileList {
+		if err := fo.Sum(fo.needHash); err != nil {
+			myLog.Println(0, "Error:", err)
+		}
+	}
+}
+
+func (fileList FileObjList) scheduleChecksum(sType sumType) {
+	for _, fo := range fileList {
+		fo.needHash = sType
+	}
+}
+
 func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 	var dupeList []FileObjList
+	var scheduleFull []FileObjList
 	hashes := make(map[string]FileObjList)
 
 	// Sort the list for better efficiency
@@ -249,22 +298,12 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 
 	// Compute checksums
 	for _, fo := range fileList {
-		if err := fo.Sum(sType); err != nil {
+		hash, err := fo.checksum(sType)
+		if err != nil {
 			myLog.Println(0, "Error:", err)
 			continue
 		}
-		var hbytes []byte
-		if sType == partialChecksum {
-			hbytes = fo.PartialHash
-		} else if sType == fullChecksum {
-			hbytes = fo.Hash
-		} else {
-			panic("Internal error: Invalid sType")
-		}
-		if hbytes != nil {
-			hash := hex.EncodeToString(hbytes)
-			hashes[hash] = append(hashes[hash], fo)
-		}
+		hashes[hash] = append(hashes[hash], fo)
 	}
 
 	// Let's de-dupe now...
@@ -273,11 +312,25 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 			continue
 		}
 		if sType == partialChecksum {
-			dupeList = append(dupeList, l.findDupesChecksums(fullChecksum)...)
-		} else { // full checksums -> we’re done
+			scheduleFull = append(scheduleFull, l)
+		} else { // full checksums -> we're done
 			dupeList = append(dupeList, l)
+			// TODO: sort by increasing size
+			myLog.Printf(5, "  . found %d new duplicates\n", len(l))
 		}
-		// TODO: sort by increasing size
+	}
+	if sType == partialChecksum {
+		var csList FileObjList
+		for _, fol := range scheduleFull {
+			csList = append(csList, fol...)
+		}
+		myLog.Printf(6, "  .. findDupesChecksums: computing %d "+
+			"full checksums\n", len(csList)) // DBG
+		csList.computeSheduledChecksums()
+		for _, l := range scheduleFull {
+			r := l.findDupesChecksums(fullChecksum)
+			dupeList = append(dupeList, r...)
+		}
 	}
 
 	return dupeList
@@ -286,17 +339,40 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 // findDupes() uses checksums to find file duplicates
 func (data *dataT) findDupes(skipPartial bool) []FileObjList {
 	var dupeList []FileObjList
+	var schedulePartial []FileObjList
+	var scheduleFull []FileObjList
 
 	for size, sizeGroup := range data.sizeGroups {
-		var r []FileObjList
 		// We skip partial checksums for small files or if requested
 		if size > minSizePartialChecksum && !skipPartial {
-			r = sizeGroup.files.findDupesChecksums(partialChecksum)
+			sizeGroup.files.scheduleChecksum(partialChecksum)
+			schedulePartial = append(schedulePartial, sizeGroup.files)
 		} else {
-			r = sizeGroup.files.findDupesChecksums(fullChecksum)
+			sizeGroup.files.scheduleChecksum(fullChecksum)
+			scheduleFull = append(scheduleFull, sizeGroup.files)
 		}
+	}
+
+	var csList FileObjList
+	for _, fol := range schedulePartial {
+		csList = append(csList, fol...)
+	}
+	for _, fol := range scheduleFull {
+		csList = append(csList, fol...)
+	}
+	myLog.Printf(6, "  .. findDupes: computing %d misc checksums\n",
+		len(csList)) // DBG
+	csList.computeSheduledChecksums()
+
+	for _, l := range schedulePartial {
+		r := l.findDupesChecksums(partialChecksum)
 		dupeList = append(dupeList, r...)
 	}
+	for _, l := range scheduleFull {
+		r := l.findDupesChecksums(fullChecksum)
+		dupeList = append(dupeList, r...)
+	}
+	// TODO: sort by increasing size
 	return dupeList
 }
 
