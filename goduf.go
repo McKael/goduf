@@ -53,6 +53,7 @@ type fileObj struct {
 	Hash        []byte
 }
 
+// FileObjList is only exported so that we can have a sort interface on inodes.
 type FileObjList []*fileObj
 
 type sizeClass struct {
@@ -122,7 +123,7 @@ func visit(path string, f os.FileInfo, err error) error {
 
 	if mode := f.Mode(); mode&os.ModeType != 0 {
 		if mode&os.ModeSymlink != 0 {
-			myLog.Println(5, "Ignoring symbolic link", path)
+			myLog.Println(6, "Ignoring symbolic link", path)
 		} else {
 			myLog.Println(0, "Ignoring special file", path)
 		}
@@ -212,27 +213,22 @@ func (fo *fileObj) Sum(sType sumType) error {
 	panic("Internal error: Invalid sType")
 }
 
-func (data *dataT) dispCount() {
+func (data *dataT) dispCount() { // FIXME rather useless
 	if myLog.verbosity < 4 {
 		return
 	}
-	var c1, c2, c3, c4 int
-	var s4 string
+	var c1, c1b, c2 int
+	var s1 string
 	for _, sc := range data.sizeGroups {
 		c1 += len(sc.files)
-		for _, fol := range sc.medsums {
-			c2 += len(fol)
-		}
-		for _, fol := range sc.fullsums {
-			c3 += len(fol)
-		}
+		c2++
 	}
-	c4 = len(data.emptyFiles)
-	if c4 > 0 {
-		s4 = fmt.Sprintf("+%d", c4)
+	c1b = len(data.emptyFiles)
+	if c1b > 0 {
+		s1 = fmt.Sprintf("+%d", c1b)
 	}
-	myLog.Printf(4, "  Current countdown: %d  [%d%s/%d/%d]\n",
-		c1+c2+c3+c4, c1, s4, c2, c3)
+	myLog.Printf(4, "  Current countdown: %d  [%d%s/%d]\n",
+		c1+c1b, c1, s1, c2)
 }
 
 func (data *dataT) filesWithSameHash() (hgroups []FileObjList) {
@@ -244,153 +240,64 @@ func (data *dataT) filesWithSameHash() (hgroups []FileObjList) {
 	return
 }
 
-func createHashFromSum(sType sumType, folist FileObjList, hashes *map[string]FileObjList) {
-	for _, fo := range folist {
-		var hash string
-		var hbytes []byte
-		if sType == partialChecksum {
-			hbytes = fo.PartialHash
-		} else if sType == fullChecksum {
-			hbytes = fo.Hash
-		} else {
-			panic("Internal error: Invalid sType")
-		}
-		if hbytes == nil {
-			// Could happen if the file was not readable,
-			// We skip it (already shown as dropped)
-			continue
-		}
-		hash = hex.EncodeToString(hbytes)
+func findDupesFullChecksums(fileList FileObjList) []FileObjList {
+	var dupeList []FileObjList
+	hashes := make(map[string]FileObjList)
 
-		(*hashes)[hash] = append((*hashes)[hash], fo)
-	}
-}
-
-func (data *dataT) calculateMedSums() {
-	var bigList FileObjList
-	var droppedGroups int
-	var droppedFiles int
-
-	// Create a unique list of files to be partially checksummed
-	for size, sizeGroup := range data.sizeGroups {
-		if size < minSizePartialChecksum {
-			// We do not use MedSums for small files
-			continue
-		}
-		bigList = append(bigList, sizeGroup.files...)
-	}
-
-	// Sort the list for better efficiency -- that's the whole point of
-	// the unique big list.
-	sort.Sort(ByInode(bigList))
-
-	// Compute partial checksums
-	for _, fo := range bigList {
-		if err := fo.Sum(partialChecksum); err != nil {
-			myLog.Println(0, "Error:", err)
-			droppedFiles++
-			// The hash part will be nil and the file will
-			// be dropped in createHashFromSum() below.
-		}
-	}
-
-	// Reparse size-grouped hashes and use the new hash information
-	// to build lists of files with the same partial checksum.
-	for size, sizeGroup := range data.sizeGroups {
-		if size < minSizePartialChecksum {
-			// We do not use MedSums for small files
-			continue
-		}
-		hashes := make(map[string]FileObjList)
-		createHashFromSum(partialChecksum, sizeGroup.files, &hashes)
-
-		// Let's de-dupe now...
-		for h, l := range hashes {
-			if len(l) < 2 {
-				droppedGroups++
-				droppedFiles += len(l)
-				delete(hashes, h)
-			}
-		}
-
-		// Done, save the result
-		data.sizeGroups[size].medsums = hashes
-
-		// We remove the items from "files" since they are in the hash
-		// tree now.
-		sizeGroup.files = nil
-
-		if len(hashes) == 0 { // We're done with this size group
-			delete(data.sizeGroups, size)
-		}
-	}
-
-	if droppedFiles > 0 {
-		myLog.Printf(3, "  Dropped %d files in %d groups\n",
-			droppedFiles, droppedGroups)
-	}
-	return
-}
-
-func (data *dataT) calculateChecksums() {
-	var bigList FileObjList
-	var droppedGroups int
-	var droppedFiles int
-
-	// Create a unique list of files to be fully checksummed
-	for _, sizeGroup := range data.sizeGroups {
-		// #1: small files
-		bigList = append(bigList, sizeGroup.files...)
-		// #2: files with same partial checksum
-		for _, l := range sizeGroup.medsums {
-			bigList = append(bigList, l...)
-		}
-	}
-
-	// Sort the list for better efficiency -- that's the whole point of
-	// the unique big list.
-	sort.Sort(ByInode(bigList))
+	// Sort the list for better efficiency
+	sort.Sort(ByInode(fileList))
 
 	// Compute full checksums
-	for _, fo := range bigList {
+	for _, fo := range fileList {
 		if err := fo.Sum(fullChecksum); err != nil {
 			myLog.Println(0, "Error:", err)
-			droppedFiles++
-			// The hash part will be nil and the file will
-			// be dropped in createHashFromSum() below.
+			continue
 		}
+		hash := hex.EncodeToString(fo.Hash)
+		hashes[hash] = append(hashes[hash], fo)
 	}
 
-	// Reparse size-grouped hashes and use the new hash information
-	// to build lists of files with the same checksum.
-	for size, sizeGroup := range data.sizeGroups {
-		hashes := make(map[string]FileObjList)
-		// #1: small files
-		createHashFromSum(fullChecksum, sizeGroup.files, &hashes)
-		// #2: files with same partial checksum
-		for _, l := range sizeGroup.medsums {
-			createHashFromSum(fullChecksum, l, &hashes)
+	// Let's de-dupe now...
+	for _, l := range hashes {
+		if len(l) < 2 {
+			continue
 		}
+		dupeList = append(dupeList, l)
+		// TODO sort by increasing size
+		myLog.Printf(5, "  . found %d new duplicates\n", len(l))
+	}
 
-		// Let's de-dupe now...
-		for h, l := range hashes {
-			if len(l) < 2 {
-				droppedGroups++
-				droppedFiles += len(l)
-				delete(hashes, h)
-			}
+	return dupeList
+}
+
+// TODO: refactor to avoid code duplication
+func findDupesPartialChecksums(fileList FileObjList) []FileObjList {
+	var dupeList []FileObjList
+	hashes := make(map[string]FileObjList)
+
+	// Sort the list for better efficiency
+	sort.Sort(ByInode(fileList))
+
+	// Compute partial checksums
+	for _, fo := range fileList {
+		if err := fo.Sum(partialChecksum); err != nil {
+			myLog.Println(0, "Error:", err)
+			continue
 		}
+		hash := hex.EncodeToString(fo.PartialHash)
+		hashes[hash] = append(hashes[hash], fo)
+	}
 
-		// Done, save the result
-		data.sizeGroups[size].fullsums = hashes
-		data.sizeGroups[size].medsums = nil
-		sizeGroup.files = nil
+	// Let's de-dupe now...
+	for _, l := range hashes {
+		if len(l) < 2 {
+			continue
+		}
+		dupeList = append(dupeList, findDupesFullChecksums(l)...)
+		// TODO sort by increasing size
 	}
-	if droppedFiles > 0 {
-		myLog.Printf(3, "  Dropped %d files in %d groups\n",
-			droppedFiles, droppedGroups)
-	}
-	return
+
+	return dupeList
 }
 
 func (data *dataT) dropEmptyFiles(ignoreEmpty bool) (emptyCount int) {
@@ -426,7 +333,6 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 		// Instead of this loop, another way would be to use the field
 		// "Unique" of the fileObj to mark them to be discarded
 		// and remove them all at the end.
-		// TODO: what about symlinks?
 		for {
 			if !OSHasInodes() {
 				break
@@ -434,10 +340,8 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 			var hardLinkIndex int
 			fo := sizeGroup.files[0]
 			prevDev, prevIno := GetDevIno(fo)
-			//fmt.Printf(" - FO: %#v\n", *fo)
 
 			for i, fo := range sizeGroup.files[1:] {
-				//fmt.Printf(" - FO %d : %#v\n", i, *fo)
 				dev, ino := GetDevIno(fo)
 				if dev == prevDev && ino == prevIno {
 					hardLinkIndex = i + 1
@@ -469,6 +373,23 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 		}
 	}
 	return
+}
+
+// findDupes() uses checksums to find file duplicates
+func (data *dataT) findDupes(skipPartial bool) []FileObjList {
+	var dupeList []FileObjList
+
+	for size, sizeGroup := range data.sizeGroups {
+		var r []FileObjList
+		// We skip partial checksums for small files or if requested
+		if size > minSizePartialChecksum && !skipPartial {
+			r = findDupesPartialChecksums(sizeGroup.files)
+		} else {
+			r = findDupesFullChecksums(sizeGroup.files)
+		}
+		dupeList = append(dupeList, r...)
+	}
+	return dupeList
 }
 
 func formatSize(sizeBytes uint64, short bool) string {
@@ -510,7 +431,7 @@ func main() {
 	flag.BoolVar(&summary, "s", false, "See --summary")
 	flag.BoolVar(&skipPartial, "skip-partial", false, "Skip partial checksums")
 	flag.IntVar(&myLog.verbosity, "verbosity", 0,
-		"Set verbosity level (1-5)")
+		"Set verbosity level (1-6)")
 	flag.IntVar(&myLog.verbosity, "vl", 0, "See verbosity")
 	timings := flag.Bool("timings", false, "Set detailed log timings")
 	flag.BoolVar(&ignoreEmpty, "no-empty", false, "Ignore empty files")
@@ -557,40 +478,29 @@ func main() {
 			myLog.Printf(1, "  %d empty files were ignored\n",
 				emptyCount)
 		}
-		data.dispCount()
+		data.dispCount() // XXX
 		myLog.Println(3, "* Number of size groups:", len(data.sizeGroups))
 	}
 
 	// Remove unique sizes
-	myLog.Println(1, "* Removing files with unique size, sorting file lists...")
+	myLog.Println(1, "* Removing files with unique size and hard links...")
 	hardLinkCount, uniqueSizeCount := data.initialCleanup()
 	if verbose {
 		myLog.Printf(2, "  Dropped %d files with unique size\n",
 			uniqueSizeCount)
 		myLog.Printf(2, "  Dropped %d hard links\n", hardLinkCount)
 		myLog.Println(3, "* Number of size groups:", len(data.sizeGroups))
-		data.dispCount()
+		data.dispCount() // XXX
 	}
-
-	// Calculate medsums
-	if !skipPartial {
-		myLog.Println(1, "* Calculating partial checksums...")
-		data.calculateMedSums()
-		data.dispCount()
-		myLog.Println(3, "* Number of size groups:", len(data.sizeGroups))
-	}
-
-	// Calculate checksums
-	myLog.Println(1, "* Calculating checksums...")
-	data.calculateChecksums()
-	data.dispCount()
 
 	// Get list of dupes
+	myLog.Println(1, "* Computing checksums...")
 	var result []FileObjList
 	if len(data.emptyFiles) > 0 {
 		result = append(result, data.emptyFiles)
 	}
-	result = append(result, data.filesWithSameHash()...)
+	result = append(result, data.findDupes(skipPartial)...)
+
 	myLog.Println(3, "* Number of match groups:", len(result))
 
 	// Done!  Dump dupes
@@ -603,7 +513,7 @@ func main() {
 		size := uint64(l[0].Size())
 		// We do not count the size of the 1st item
 		// so we get only duplicate size.
-		dupeSize += size * uint64(len(l) - 1)
+		dupeSize += size * uint64(len(l)-1)
 		if !summary {
 			fmt.Printf("\nGroup #%d (%d files * %v):\n", i+1,
 				len(l), formatSize(size, true))
