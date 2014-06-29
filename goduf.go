@@ -286,7 +286,6 @@ func computeSheduledChecksums(fileLists ...[]FileObjList) {
 	}
 }
 
-
 func (fileList FileObjList) scheduleChecksum(sType sumType) {
 	for _, fo := range fileList {
 		fo.needHash = sType
@@ -320,7 +319,6 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 			scheduleFull = append(scheduleFull, l)
 		} else { // full checksums -> we're done
 			dupeList = append(dupeList, l)
-			// TODO: sort by increasing size
 			myLog.Printf(5, "  . found %d new duplicates\n", len(l))
 		}
 	}
@@ -362,7 +360,6 @@ func (data *dataT) findDupes(skipPartial bool) []FileObjList {
 		r := l.findDupesChecksums(fullChecksum)
 		dupeList = append(dupeList, r...)
 	}
-	// TODO: sort by increasing size
 	return dupeList
 }
 
@@ -406,13 +403,13 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 		// "Unique" of the fileObj to mark them to be discarded
 		// and remove them all at the end.
 		for {
-			type devinode struct { dev, ino uint64 }
+			type devinode struct{ dev, ino uint64 }
 			devinodes := make(map[devinode]bool)
 			var hardLinkIndex int
 
 			for i, fo := range *sgListP {
 				dev, ino := GetDevIno(fo)
-				di := devinode{ dev, ino}
+				di := devinode{dev, ino}
 				if _, hlink := devinodes[di]; hlink {
 					hardLinkIndex = i
 					hardLinkCount++
@@ -560,6 +557,7 @@ func main() {
 	if len(result) > 0 && !summary {
 		myLog.Println(1, "* Dupes:")
 	}
+	// TODO: sort by increasing size
 	var dupeSize uint64
 	data.cmpt = 0
 	for i, l := range result {
