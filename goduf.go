@@ -165,34 +165,19 @@ func (fo *fileObj) MedSum() error {
 	}
 	defer file.Close()
 	hash := sha1.New()
-	// XXX: duplicated code!
-	// BOF
-	if _, err := io.CopyN(hash, file, medsumBytes); err != nil {
-		if err == nil {
-			return errors.New("failed to read bytes from file:" +
-				fo.FilePath)
-		}
-		return err
-	}
-	/*
-		// MOF
-		file.Seek((fo.Size()-medsumBytes)/2, 0)
+
+	// Read first bytes and last bytes from file
+	for i := 0; i < 2; i++ {
 		if _, err := io.CopyN(hash, file, medsumBytes); err != nil {
 			if err == nil {
-				return errors.New("failed to read bytes from file:" +
-					fo.FilePath)
+				const errmsg = "failed to read bytes from file: "
+				return errors.New(errmsg + fo.FilePath)
 			}
 			return err
 		}
-	*/
-	// EOF
-	file.Seek(0-medsumBytes, 2)
-	if _, err := io.CopyN(hash, file, medsumBytes); err != nil {
-		if err == nil {
-			return errors.New("failed to read bytes from file:" +
-				fo.FilePath)
+		if i == 0 { // Seek to end of file
+			file.Seek(0-medsumBytes, 2)
 		}
-		return err
 	}
 
 	fo.PartialHash = hash.Sum(nil)
