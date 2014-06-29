@@ -60,8 +60,6 @@ type FileObjList []*fileObj
 
 type sizeClass struct { // XXX still useful?
 	files    FileObjList
-	medsums  map[string]FileObjList
-	fullsums map[string]FileObjList
 }
 
 type dataT struct {
@@ -233,15 +231,6 @@ func (data *dataT) dispCount() { // FIXME rather useless
 	}
 	myLog.Printf(4, "  Current countdown: %d  [%d%s/%d]\n",
 		c1+c1b, c1, s1, c2)
-}
-
-func (data *dataT) filesWithSameHash() (hgroups []FileObjList) {
-	for _, sizeGroup := range data.sizeGroups {
-		for _, l := range sizeGroup.fullsums {
-			hgroups = append(hgroups, l)
-		}
-	}
-	return
 }
 
 // checksum returns the requested checksum as a string.
