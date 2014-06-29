@@ -11,7 +11,7 @@ type ByInode FileObjList
 func (a ByInode) Len() int      { return len(a) }
 func (a ByInode) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByInode) Less(i, j int) bool {
-	return true
+	return a[i].FilePath < a[j].FilePath
 }
 
 // OSHasInodes returns true iff the O.S. uses inodes for its filesystems.
