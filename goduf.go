@@ -57,6 +57,7 @@ type fileObj struct {
 
 // FileObjList is only exported so that we can have a sort interface on inodes.
 type FileObjList []*fileObj
+type foListList []FileObjList
 
 type dataT struct {
 	totalSize   uint64
@@ -265,7 +266,7 @@ func (fileList FileObjList) computeSheduledChecksums() {
 		}
 	}
 }
-func computeSheduledChecksums(fileLists ...[]FileObjList) {
+func computeSheduledChecksums(fileLists ...foListList) {
 	var bigFileList FileObjList
 	// Merge the lists of FileObjList lists and create a unique list
 	// of file objects.
@@ -292,9 +293,9 @@ func (fileList FileObjList) scheduleChecksum(sType sumType) {
 	}
 }
 
-func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
-	var dupeList []FileObjList
-	var scheduleFull []FileObjList
+func (fileList FileObjList) findDupesChecksums(sType sumType) foListList {
+	var dupeList foListList
+	var scheduleFull foListList
 	hashes := make(map[string]FileObjList)
 
 	// Sort the list for better efficiency
@@ -334,10 +335,10 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 }
 
 // findDupes() uses checksums to find file duplicates
-func (data *dataT) findDupes(skipPartial bool) []FileObjList {
-	var dupeList []FileObjList
-	var schedulePartial []FileObjList
-	var scheduleFull []FileObjList
+func (data *dataT) findDupes(skipPartial bool) foListList {
+	var dupeList foListList
+	var schedulePartial foListList
+	var scheduleFull foListList
 
 	for size, sgListP := range data.sizeGroups {
 		// We skip partial checksums for small files or if requested
@@ -545,7 +546,7 @@ func main() {
 
 	// Get list of dupes
 	myLog.Println(1, "* Computing checksums...")
-	var result []FileObjList
+	var result foListList
 	if len(data.emptyFiles) > 0 {
 		result = append(result, data.emptyFiles)
 	}
@@ -557,7 +558,9 @@ func main() {
 	if len(result) > 0 && !summary {
 		myLog.Println(1, "* Dupes:")
 	}
-	// TODO: sort by increasing size
+	// Sort by increasing size (of the files, not groups)
+	sort.Sort(byGroupFileSize(result))
+
 	var dupeSize uint64
 	data.cmpt = 0
 	for i, l := range result {
@@ -569,6 +572,7 @@ func main() {
 			fmt.Printf("\nGroup #%d (%d files * %v):\n", i+1,
 				len(l), formatSize(size, true))
 		}
+		sort.Sort(byFilePathName(l))
 		for _, f := range l {
 			if !summary {
 				fmt.Println(f.FilePath)
@@ -591,4 +595,24 @@ func main() {
 		"duplicate files in", len(result), "sets")
 	myLog.Println(summaryLevel, "Redundant data size:",
 		formatSize(dupeSize, false))
+}
+
+// Implement a sort interface for the list of duplicate groups
+type byGroupFileSize foListList
+
+func (a byGroupFileSize) Len() int      { return len(a) }
+func (a byGroupFileSize) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a byGroupFileSize) Less(i, j int) bool {
+	// Since this is supposed to be used for duplicate lists,
+	// we use the size of the first file of the group.
+	return a[i][0].Size() < a[j][0].Size()
+}
+
+// Implement a sort interface for a slice of files
+type byFilePathName FileObjList
+
+func (a byFilePathName) Len() int      { return len(a) }
+func (a byFilePathName) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a byFilePathName) Less(i, j int) bool {
+	return a[i].Name() < a[j].Name()
 }
