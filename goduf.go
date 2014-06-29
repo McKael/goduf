@@ -58,14 +58,10 @@ type fileObj struct {
 // FileObjList is only exported so that we can have a sort interface on inodes.
 type FileObjList []*fileObj
 
-type sizeClass struct { // XXX still useful?
-	files    FileObjList
-}
-
 type dataT struct {
 	totalSize   uint64
 	cmpt        uint
-	sizeGroups  map[int64]*sizeClass
+	sizeGroups  map[int64]*FileObjList
 	emptyFiles  FileObjList
 	ignoreCount int
 }
@@ -135,10 +131,9 @@ func visit(path string, f os.FileInfo, err error) error {
 	data.totalSize += uint64(f.Size())
 	fo := &fileObj{FilePath: path, FileInfo: f}
 	if _, ok := data.sizeGroups[f.Size()]; !ok {
-		data.sizeGroups[f.Size()] = &sizeClass{}
+		data.sizeGroups[f.Size()] = new(FileObjList)
 	}
-	data.sizeGroups[f.Size()].files =
-		append(data.sizeGroups[f.Size()].files, fo)
+	*data.sizeGroups[f.Size()] = append(*data.sizeGroups[f.Size()], fo)
 	return nil
 }
 
@@ -221,8 +216,8 @@ func (data *dataT) dispCount() { // FIXME rather useless
 	}
 	var c1, c1b, c2 int
 	var s1 string
-	for _, sc := range data.sizeGroups {
-		c1 += len(sc.files)
+	for _, scListP := range data.sizeGroups {
+		c1 += len(*scListP)
 		c2++
 	}
 	c1b = len(data.emptyFiles)
@@ -346,14 +341,14 @@ func (data *dataT) findDupes(skipPartial bool) []FileObjList {
 	var schedulePartial []FileObjList
 	var scheduleFull []FileObjList
 
-	for size, sizeGroup := range data.sizeGroups {
+	for size, sgListP := range data.sizeGroups {
 		// We skip partial checksums for small files or if requested
 		if size > minSizePartialChecksum && !skipPartial {
-			sizeGroup.files.scheduleChecksum(partialChecksum)
-			schedulePartial = append(schedulePartial, sizeGroup.files)
+			sgListP.scheduleChecksum(partialChecksum)
+			schedulePartial = append(schedulePartial, *sgListP)
 		} else {
-			sizeGroup.files.scheduleChecksum(fullChecksum)
-			scheduleFull = append(scheduleFull, sizeGroup.files)
+			sgListP.scheduleChecksum(fullChecksum)
+			scheduleFull = append(scheduleFull, *sgListP)
 		}
 	}
 
@@ -372,26 +367,26 @@ func (data *dataT) findDupes(skipPartial bool) []FileObjList {
 }
 
 func (data *dataT) dropEmptyFiles(ignoreEmpty bool) (emptyCount int) {
-	sc, ok := data.sizeGroups[0]
+	sgListP, ok := data.sizeGroups[0]
 	if ok == false {
 		return // no empty files
 	}
 	if !ignoreEmpty {
-		if len(sc.files) > 1 {
-			data.emptyFiles = sc.files
+		if len(*sgListP) > 1 {
+			data.emptyFiles = *sgListP
 		}
 		delete(data.sizeGroups, 0)
 		return
 	}
-	emptyCount = len(sc.files)
+	emptyCount = len(*sgListP)
 	delete(data.sizeGroups, 0)
 	return
 }
 
 // initialCleanup() removes files with unique size as well as hard links
 func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
-	for s, sizeGroup := range data.sizeGroups {
-		if len(sizeGroup.files) < 2 {
+	for s, sgListP := range data.sizeGroups {
+		if len(*sgListP) < 2 {
 			delete(data.sizeGroups, s)
 			uniqueSizeCount++
 			continue
@@ -415,7 +410,7 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 			devinodes := make(map[devinode]bool)
 			var hardLinkIndex int
 
-			for i, fo := range sizeGroup.files {
+			for i, fo := range *sgListP {
 				dev, ino := GetDevIno(fo)
 				di := devinode{ dev, ino}
 				if _, hlink := devinodes[di]; hlink {
@@ -433,14 +428,14 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 			}
 			i := hardLinkIndex
 			// Remove hardink
-			copy(sizeGroup.files[i:], sizeGroup.files[i+1:])
-			sizeGroup.files[len(sizeGroup.files)-1] = nil
-			sizeGroup.files = sizeGroup.files[:len(sizeGroup.files)-1]
+			copy((*sgListP)[i:], (*sgListP)[i+1:])
+			(*sgListP)[len(*sgListP)-1] = nil
+			*sgListP = (*sgListP)[:len(*sgListP)-1]
 		}
 		// We have found hard links in this size group,
 		// maybe we can remove it
 		if hardlinksFound {
-			if len(sizeGroup.files) < 2 {
+			if len(*sgListP) < 2 {
 				delete(data.sizeGroups, s)
 				uniqueSizeCount++
 				continue
@@ -513,7 +508,7 @@ func main() {
 		log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	}
 
-	data.sizeGroups = make(map[int64]*sizeClass)
+	data.sizeGroups = make(map[int64]*FileObjList)
 	myLog.Println(1, "* Reading file metadata")
 
 	for _, root := range flag.Args() {
