@@ -272,7 +272,7 @@ func (fileList FileObjList) computeSheduledChecksums() {
 	// Sort the list for better efficiency
 	sort.Sort(ByInode(fileList))
 
-	myLog.Printf(6, "  . will compute %d checksums\n", len(fileList))
+	//myLog.Printf(6, "  . will compute %d checksums\n", len(fileList))
 
 	// Compute checksums
 	for _, fo := range fileList {
@@ -281,6 +281,27 @@ func (fileList FileObjList) computeSheduledChecksums() {
 		}
 	}
 }
+func computeSheduledChecksums(fileLists ...[]FileObjList) {
+	var bigFileList FileObjList
+	// Merge the lists of FileObjList lists and create a unique list
+	// of file objects.
+	for _, foll := range fileLists {
+		for _, fol := range foll {
+			bigFileList = append(bigFileList, fol...)
+		}
+	}
+
+	// Sort the list for better efficiency
+	sort.Sort(ByInode(bigFileList))
+
+	// Compute checksums
+	for _, fo := range bigFileList {
+		if err := fo.Sum(fo.needHash); err != nil {
+			myLog.Println(0, "Error:", err)
+		}
+	}
+}
+
 
 func (fileList FileObjList) scheduleChecksum(sType sumType) {
 	for _, fo := range fileList {
@@ -320,13 +341,7 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) []FileObjList {
 		}
 	}
 	if sType == partialChecksum && len(scheduleFull) > 0 {
-		var csList FileObjList
-		for _, fol := range scheduleFull {
-			csList = append(csList, fol...)
-		}
-		myLog.Printf(6, "  .. findDupesChecksums: computing %d "+
-			"full checksums\n", len(csList)) // DBG
-		csList.computeSheduledChecksums()
+		computeSheduledChecksums(scheduleFull)
 		for _, l := range scheduleFull {
 			r := l.findDupesChecksums(fullChecksum)
 			dupeList = append(dupeList, r...)
@@ -353,16 +368,7 @@ func (data *dataT) findDupes(skipPartial bool) []FileObjList {
 		}
 	}
 
-	var csList FileObjList
-	for _, fol := range schedulePartial {
-		csList = append(csList, fol...)
-	}
-	for _, fol := range scheduleFull {
-		csList = append(csList, fol...)
-	}
-	myLog.Printf(6, "  .. findDupes: computing %d misc checksums\n",
-		len(csList)) // DBG
-	csList.computeSheduledChecksums()
+	computeSheduledChecksums(schedulePartial, scheduleFull)
 
 	for _, l := range schedulePartial {
 		r := l.findDupesChecksums(partialChecksum)
@@ -402,17 +408,20 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 			continue
 		}
 
+		// We can't look for hard links if the O.S. does not support
+		// them...
+		if !OSHasInodes() {
+			continue
+		}
+
 		var hardlinksFound bool
 
-		// Check for hardlinks
+		// Check for hard links
 		// Remove unique dev/inodes
 		// Instead of this loop, another way would be to use the field
 		// "Unique" of the fileObj to mark them to be discarded
 		// and remove them all at the end.
 		for {
-			if !OSHasInodes() {
-				break
-			}
 			var hardLinkIndex int
 			fo := sizeGroup.files[0]
 			prevDev, prevIno := GetDevIno(fo)
