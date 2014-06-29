@@ -73,6 +73,7 @@ type myLogT struct {
 	verbosity int
 }
 
+// Implement my own logger
 var myLog myLogT
 
 func (l *myLogT) Printf(level int, format string, args ...interface{}) {
@@ -99,6 +100,9 @@ func (l *myLogT) Println(level int, args ...interface{}) {
 	fmt.Fprintln(os.Stderr, args...)
 }
 
+// visit is called for every file and directory.
+// We check the file object is correct (regular, readable...) and add
+// it to the data.sizeGroups hash.
 func visit(path string, f os.FileInfo, err error) error {
 	if err != nil {
 		if f == nil {
@@ -138,7 +142,8 @@ func visit(path string, f os.FileInfo, err error) error {
 	return nil
 }
 
-func (fo *fileObj) CheckSum() error {
+// Checksum computes the file's complete SHA1 hash.
+func (fo *fileObj) Checksum() error {
 	file, err := os.Open(fo.FilePath)
 	if err != nil {
 		return err
@@ -158,7 +163,8 @@ func (fo *fileObj) CheckSum() error {
 	return nil
 }
 
-func (fo *fileObj) MedSum() error {
+// partialChecksum computes the file's partial SHA1 hash (first and last bytes).
+func (fo *fileObj) partialChecksum() error {
 	file, err := os.Open(fo.FilePath)
 	if err != nil {
 		return err
@@ -185,18 +191,20 @@ func (fo *fileObj) MedSum() error {
 	return nil
 }
 
+// Sum computes the file's SHA1 hash, partial or full according to sType.
 func (fo *fileObj) Sum(sType sumType) error {
 	if sType == partialChecksum {
-		return fo.MedSum()
+		return fo.partialChecksum()
 	} else if sType == fullChecksum {
-		return fo.CheckSum()
+		return fo.Checksum()
 	} else if sType == noChecksum {
 		return nil
 	}
 	panic("Internal error: Invalid sType")
 }
 
-func (data *dataT) dispCount() { // FIXME rather useless
+// dispCount display statistics to the user.
+func (data *dataT) dispCount() { // It this still useful?
 	if myLog.verbosity < 4 {
 		return
 	}
@@ -238,19 +246,9 @@ func (fo fileObj) checksum(sType sumType) (string, error) {
 	return hex.EncodeToString(hbytes), nil
 }
 
-func (fileList FileObjList) computeSheduledChecksums() {
-	// Sort the list for better efficiency
-	sort.Sort(ByInode(fileList))
-
-	//myLog.Printf(6, "  . will compute %d checksums\n", len(fileList))
-
-	// Compute checksums
-	for _, fo := range fileList {
-		if err := fo.Sum(fo.needHash); err != nil {
-			myLog.Println(0, "Error:", err)
-		}
-	}
-}
+// computeSheduledChecksums calculates the checksums for all the files
+// from the fileLists slice items (the kind of hash is taken from the
+// needHash field).
 func computeSheduledChecksums(fileLists ...foListList) {
 	var bigFileList FileObjList
 	// Merge the lists of FileObjList lists and create a unique list
@@ -278,6 +276,8 @@ func (fileList FileObjList) scheduleChecksum(sType sumType) {
 	}
 }
 
+// findDupesChecksums splits the fileObj list into several lists with the
+// same sType hash.
 func (fileList FileObjList) findDupesChecksums(sType sumType) foListList {
 	var dupeList foListList
 	var scheduleFull foListList
@@ -349,6 +349,9 @@ func (data *dataT) findDupes(skipPartial bool) foListList {
 	return dupeList
 }
 
+// dropEmptyFiles removes the empty files from the main map, since we don't
+// have to do any processing about them.
+// If ignoreEmpty is false, the empty file list is saved in data.emptyFiles.
 func (data *dataT) dropEmptyFiles(ignoreEmpty bool) (emptyCount int) {
 	sgListP, ok := data.sizeGroups[0]
 	if ok == false {
@@ -388,6 +391,7 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 		// Instead of this loop, another way would be to use the field
 		// "Unique" of the fileObj to mark them to be discarded
 		// and remove them all at the end.
+		// TODO: Should we also check for duplicate paths?
 		for {
 			type devinode struct{ dev, ino uint64 }
 			devinodes := make(map[devinode]bool)
@@ -428,6 +432,7 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 	return
 }
 
+// formatSize returns the size in a string with a human-readable format.
 func formatSize(sizeBytes uint64, short bool) string {
 	var units = map[int]string{
 		0: "B",
@@ -455,12 +460,14 @@ func formatSize(sizeBytes uint64, short bool) string {
 	return fmt.Sprintf("%d bytes (%d %s)", sizeBytes, humanSize, units[n])
 }
 
+// It all starts here.
 func main() {
 	var verbose bool
 	var summary bool
 	var skipPartial bool
 	var ignoreEmpty bool
 
+	// Command line parameters parsingg
 	flag.BoolVar(&verbose, "verbose", false, "Be verbose (verbosity=1)")
 	flag.BoolVar(&verbose, "v", false, "See --verbose")
 	flag.BoolVar(&summary, "summary", false, "Do not display the duplicate list")
@@ -474,6 +481,7 @@ func main() {
 
 	flag.Parse()
 
+	// Set verbosity: --verbose=true == --verbosity=1
 	if myLog.verbosity > 0 {
 		verbose = true
 	} else if verbose == true {
@@ -483,10 +491,11 @@ func main() {
 	if len(flag.Args()) == 0 {
 		// TODO: more helpful usage statement
 		myLog.Println(-1, "Usage:", os.Args[0],
-			"[options] base_directory")
+			"[options] base_directory|file...")
 		os.Exit(0)
 	}
 
+	// Change log format for benchmarking
 	if *timings {
 		log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	}
@@ -501,7 +510,11 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Count empty files and drop them if they should be ignored
 	emptyCount := data.dropEmptyFiles(ignoreEmpty)
+
+	// Display a small report
 	if verbose {
 		if data.ignoreCount > 0 {
 			myLog.Printf(1, "  %d special files were ignored\n",
@@ -514,11 +527,11 @@ func main() {
 			myLog.Printf(1, "  %d empty files were ignored\n",
 				emptyCount)
 		}
-		data.dispCount() // XXX
+		data.dispCount()
 		myLog.Println(3, "* Number of size groups:", len(data.sizeGroups))
 	}
 
-	// Remove unique sizes
+	// Remove unique sizes and hard links
 	myLog.Println(1, "* Removing files with unique size and hard links...")
 	hardLinkCount, uniqueSizeCount := data.initialCleanup()
 	if verbose {
@@ -526,10 +539,10 @@ func main() {
 			uniqueSizeCount)
 		myLog.Printf(2, "  Dropped %d hard links\n", hardLinkCount)
 		myLog.Println(3, "* Number of size groups:", len(data.sizeGroups))
-		data.dispCount() // XXX
+		data.dispCount()
 	}
 
-	// Get list of dupes
+	// Get the final list of dupes, using checksums
 	myLog.Println(1, "* Computing checksums...")
 	var result foListList
 	if len(data.emptyFiles) > 0 {
