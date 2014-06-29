@@ -422,20 +422,21 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 		// "Unique" of the fileObj to mark them to be discarded
 		// and remove them all at the end.
 		for {
+			type devinode struct { dev, ino uint64 }
+			devinodes := make(map[devinode]bool)
 			var hardLinkIndex int
-			fo := sizeGroup.files[0]
-			prevDev, prevIno := GetDevIno(fo)
 
-			for i, fo := range sizeGroup.files[1:] {
+			for i, fo := range sizeGroup.files {
 				dev, ino := GetDevIno(fo)
-				if dev == prevDev && ino == prevIno {
-					hardLinkIndex = i + 1
+				di := devinode{ dev, ino}
+				if _, hlink := devinodes[di]; hlink {
+					hardLinkIndex = i
 					hardLinkCount++
 					hardlinksFound = true
 					break
+				} else {
+					devinodes[di] = true
 				}
-				prevDev = dev
-				prevIno = ino
 			}
 
 			if hardLinkIndex == 0 {
