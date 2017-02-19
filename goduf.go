@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Mikael Berthe <mikael@lilotux.net>
+ * Copyright (C) 2014-2017 Mikael Berthe <mikael@lilotux.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -556,7 +556,12 @@ func main() {
 	if len(result) > 0 && !summary {
 		myLog.Println(1, "* Dupes:")
 	}
-	// Sort by increasing size (of the files, not groups)
+
+	// Sort files by path inside each group
+	for _, l := range result {
+		sort.Sort(byFilePathName(l))
+	}
+	// Sort groups by increasing size (of the duplicated files)
 	sort.Sort(byGroupFileSize(result))
 
 	var dupeSize uint64
@@ -570,7 +575,6 @@ func main() {
 			fmt.Printf("\nGroup #%d (%d files * %v):\n", i+1,
 				len(l), formatSize(size, true))
 		}
-		sort.Sort(byFilePathName(l))
 		for _, f := range l {
 			if !summary {
 				fmt.Println(f.FilePath)
@@ -603,6 +607,9 @@ func (a byGroupFileSize) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byGroupFileSize) Less(i, j int) bool {
 	// Since this is supposed to be used for duplicate lists,
 	// we use the size of the first file of the group.
+	if a[i][0].Size() == a[j][0].Size() {
+		return a[i][0].FilePath < a[j][0].FilePath
+	}
 	return a[i][0].Size() < a[j][0].Size()
 }
 
@@ -612,5 +619,5 @@ type byFilePathName FileObjList
 func (a byFilePathName) Len() int      { return len(a) }
 func (a byFilePathName) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byFilePathName) Less(i, j int) bool {
-	return a[i].Name() < a[j].Name()
+	return a[i].FilePath < a[j].FilePath
 }
