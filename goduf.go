@@ -267,6 +267,7 @@ func computeSheduledChecksums(fileLists ...foListList) {
 		if err := fo.Sum(fo.needHash); err != nil {
 			myLog.Println(0, "Error:", err)
 		}
+		fo.needHash = noChecksum
 	}
 }
 
@@ -278,7 +279,7 @@ func (fileList FileObjList) scheduleChecksum(sType sumType) {
 
 // findDupesChecksums splits the fileObj list into several lists with the
 // same sType hash.
-func (fileList FileObjList) findDupesChecksums(sType sumType) foListList {
+func (fileList FileObjList) findDupesChecksums(sType sumType, dryRun bool) foListList {
 	var dupeList foListList
 	var scheduleFull foListList
 	hashes := make(map[string]FileObjList)
@@ -286,6 +287,10 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) foListList {
 	// Sort the list for better efficiency
 	sort.Sort(ByInode(fileList))
 
+	if sType == fullChecksum && dryRun {
+		fileList.scheduleChecksum(fullChecksum)
+		return append(dupeList, fileList)
+	}
 	// Compute checksums
 	for _, fo := range fileList {
 		hash, err := fo.checksum(sType)
@@ -309,10 +314,13 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) foListList {
 		}
 	}
 	if sType == partialChecksum && len(scheduleFull) > 0 {
-		computeSheduledChecksums(scheduleFull)
+		//computeSheduledChecksums(scheduleFull)
 		for _, l := range scheduleFull {
-			r := l.findDupesChecksums(fullChecksum)
+			r := l.findDupesChecksums(fullChecksum, dryRun)
 			dupeList = append(dupeList, r...)
+		}
+		if dryRun {
+			return scheduleFull
 		}
 	}
 
@@ -323,6 +331,7 @@ func (fileList FileObjList) findDupesChecksums(sType sumType) foListList {
 func (data *dataT) findDupes(skipPartial bool) foListList {
 	var dupeList foListList
 	var schedulePartial foListList
+	var schedulePartial2 foListList
 	var scheduleFull foListList
 
 	for size, sgListP := range data.sizeGroups {
@@ -339,11 +348,16 @@ func (data *dataT) findDupes(skipPartial bool) foListList {
 	computeSheduledChecksums(schedulePartial, scheduleFull)
 
 	for _, l := range schedulePartial {
-		r := l.findDupesChecksums(partialChecksum)
+		r := l.findDupesChecksums(partialChecksum, true) // dry-run
+		schedulePartial2 = append(schedulePartial2, r...)
+	}
+	computeSheduledChecksums(schedulePartial2)
+	for _, l := range schedulePartial {
+		r := l.findDupesChecksums(partialChecksum, false)
 		dupeList = append(dupeList, r...)
 	}
 	for _, l := range scheduleFull {
-		r := l.findDupesChecksums(fullChecksum)
+		r := l.findDupesChecksums(fullChecksum, false)
 		dupeList = append(dupeList, r...)
 	}
 	return dupeList
