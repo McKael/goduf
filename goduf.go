@@ -481,6 +481,11 @@ func main() {
 	var skipPartial bool
 	var ignoreEmpty bool
 
+	// Assertion on constant values
+	if minSizePartialChecksum <= 2*medsumBytes {
+		log.Fatal("Internal error: assert minSizePartialChecksum > 2*medsumBytes")
+	}
+
 	// Command line parameters parsingg
 	flag.BoolVar(&verbose, "verbose", false, "Be verbose (verbosity=1)")
 	flag.BoolVar(&verbose, "v", false, "See --verbose")
