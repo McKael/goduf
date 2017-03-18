@@ -22,6 +22,10 @@
 
 package main
 
+// Installation:
+//
+// % go get hg.lilotux.net/golang/mikael/goduf
+
 import (
 	"crypto/sha1"
 	"encoding/hex"
