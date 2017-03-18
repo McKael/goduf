@@ -19,12 +19,12 @@
 
 // This program (Goduf) is a fast duplicate file finder.
 // Use goduf --help to get the list of available options.
-
-package main
-
+//
 // Installation:
 //
 // % go get hg.lilotux.net/golang/mikael/goduf
+
+package main
 
 import (
 	"crypto/sha1"
