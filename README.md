@@ -2,6 +2,9 @@
 
 Goduf is a fast duplicate file finder.
 
+[![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](https://raw.githubusercontent.com/McKael/goduf/master/LICENSE)
+[![Build Status](https://travis-ci.org/McKael/goduf.svg?branch=master)](https://travis-ci.org/McKael/goduf)
+
 ## Usage
 
 The typical usage is very simple:
