@@ -13,7 +13,8 @@ The typical usage is very simple:
 % goduf DIRS...
 ```
 
-Example:
+Examples:
+
 ```
 % goduf /usr/bin
 Group #1 (2 files * 76 bytes):
@@ -43,6 +44,12 @@ Group #5 (7 files * 4791 bytes):
 /usr/bin/ansible-vault
 
 (...)
+```
+
+```
+% goduf -summary /usr/share/doc
+2018/04/07 21:48:23 Final count: 5970 duplicate files in 1920 sets
+2018/04/07 21:48:23 Redundant data size: 107594575 bytes (102 MiB)
 ```
 
 Use `goduf -h` to get the list of available options.
