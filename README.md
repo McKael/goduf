@@ -1,8 +1,9 @@
 # goduf
 
 Goduf is a fast duplicate file finder.
+It is a command line tool.
 
-[![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](https://raw.githubusercontent.com/McKael/goduf/master/LICENSE)
+[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://raw.githubusercontent.com/McKael/goduf/master/LICENSE)
 [![Build Status](https://travis-ci.org/McKael/goduf.svg?branch=master)](https://travis-ci.org/McKael/goduf)
 
 ## Usage
@@ -54,7 +55,7 @@ Group #5 (7 files * 4791 bytes):
 
 Use `goduf -h` to get the list of available options.
 
-*Note for Windows users*: goduf does not normalize paths on Windows, so be careful not to specify the same path twice.
+*Note for Windows users:* goduf does not normalize paths on Windows, so be careful not to specify the same path twice.
 
 On Linux, hard links are automatically excluded.
 
@@ -63,11 +64,16 @@ On Linux, hard links are automatically excluded.
 From the Github mirror:
 
 ```
-% go get hg.lilotux.net/golang/mikael/goduf
+% go get github.com/McKael/goduf
 ```
 
 From my Mercurial repository (upstream):
 
 ```
-% go get github.com/McKael/goduf
+% hg clone https://hg.lilotux.net/golang/mikael/goduf
+% cd goduf
+% go build
 ```
+
+Please note that if you're not using Go v1.11 yet, you should clone the
+repository in your $GOPATH.
