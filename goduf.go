@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Mikael Berthe <mikael@lilotux.net>
+ * Copyright (C) 2014-2018 Mikael Berthe <mikael@lilotux.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -73,36 +72,8 @@ type dataT struct {
 
 var data dataT
 
-type myLogT struct {
-	verbosity int
-}
-
 // Implement my own logger
 var myLog myLogT
-
-func (l *myLogT) Printf(level int, format string, args ...interface{}) {
-	if level > l.verbosity {
-		return
-	}
-	if level >= 0 {
-		log.Printf(format, args...)
-		return
-	}
-	// Error message without timestamp
-	fmt.Fprintf(os.Stderr, format, args...)
-}
-
-func (l *myLogT) Println(level int, args ...interface{}) {
-	if level > l.verbosity {
-		return
-	}
-	if level >= 0 {
-		log.Println(args...)
-		return
-	}
-	// Error message without timestamp
-	fmt.Fprintln(os.Stderr, args...)
-}
 
 // visit is called for every file and directory.
 // We check the file object is correct (regular, readable...) and add
@@ -487,7 +458,7 @@ func main() {
 
 	// Assertion on constant values
 	if minSizePartialChecksum <= 2*medsumBytes {
-		log.Fatal("Internal error: assert minSizePartialChecksum > 2*medsumBytes")
+		myLog.Fatal("Internal error: assert minSizePartialChecksum > 2*medsumBytes")
 	}
 
 	// Command line parameters parsingg
@@ -520,7 +491,7 @@ func main() {
 
 	// Change log format for benchmarking
 	if *timings {
-		log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+		myLog.SetBenchFlags()
 	}
 
 	data.sizeGroups = make(map[int64]*FileObjList)
@@ -620,27 +591,4 @@ func main() {
 		"duplicate files in", len(result), "sets")
 	myLog.Println(summaryLevel, "Redundant data size:",
 		formatSize(dupeSize, false))
-}
-
-// Implement a sort interface for the list of duplicate groups
-type byGroupFileSize foListList
-
-func (a byGroupFileSize) Len() int      { return len(a) }
-func (a byGroupFileSize) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a byGroupFileSize) Less(i, j int) bool {
-	// Since this is supposed to be used for duplicate lists,
-	// we use the size of the first file of the group.
-	if a[i][0].Size() == a[j][0].Size() {
-		return a[i][0].FilePath < a[j][0].FilePath
-	}
-	return a[i][0].Size() < a[j][0].Size()
-}
-
-// Implement a sort interface for a slice of files
-type byFilePathName FileObjList
-
-func (a byFilePathName) Len() int      { return len(a) }
-func (a byFilePathName) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a byFilePathName) Less(i, j int) bool {
-	return a[i].FilePath < a[j].FilePath
 }
