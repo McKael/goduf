@@ -23,6 +23,8 @@
 // Installation:
 //
 // % go get hg.lilotux.net/golang/mikael/goduf
+// or
+// % go get github.com/McKael/goduf
 
 package main
 
