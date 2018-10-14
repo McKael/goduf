@@ -529,6 +529,7 @@ func duf(dirs []string, options Options) (Results, error) {
 		}
 		results.Groups = append(results.Groups, newSet)
 	}
+	results.NumberOfSets = uint(len(results.Groups))
 	results.RedundantDataSizeH = formatSize(results.RedundantDataSize, true)
 	results.TotalFileCount = data.cmpt
 
