@@ -51,6 +51,13 @@ const (
 	partialChecksum
 )
 
+type Options struct {
+	Summary     bool
+	OutToJSON   bool
+	SkipPartial bool
+	IgnoreEmpty bool
+}
+
 // Results contains the results of the duplicates search
 type Results struct {
 	Groups             []ResultSet `json:"groups"`
@@ -467,66 +474,25 @@ func formatSize(sizeBytes uint64, short bool) string {
 	return fmt.Sprintf("%d bytes (%d %s)", sizeBytes, humanSize, units[n])
 }
 
-// It all starts here.
-func main() {
+func duf(dirs []string, options Options) (Results, error) {
 	var verbose bool
-	var summary bool
-	var outToJSON bool
-	var skipPartial bool
-	var ignoreEmpty bool
-
-	// Assertion on constant values
-	if minSizePartialChecksum <= 2*medsumBytes {
-		myLog.Fatal("Internal error: assert minSizePartialChecksum > 2*medsumBytes")
-	}
-
-	// Command line parameters parsingg
-	flag.BoolVar(&verbose, "verbose", false, "Be verbose (verbosity=1)")
-	flag.BoolVar(&verbose, "v", false, "See --verbose")
-	flag.BoolVar(&outToJSON, "json", false, "Use JSON format for output")
-	flag.BoolVar(&summary, "summary", false, "Do not display the duplicate list")
-	flag.BoolVar(&summary, "s", false, "See --summary")
-	flag.BoolVar(&skipPartial, "skip-partial", false, "Skip partial checksums")
-	flag.IntVar(&myLog.verbosity, "verbosity", 0,
-		"Set verbosity level (1-6)")
-	flag.IntVar(&myLog.verbosity, "vl", 0, "See verbosity")
-	timings := flag.Bool("timings", false, "Set detailed log timings")
-	flag.BoolVar(&ignoreEmpty, "no-empty", false, "Ignore empty files")
-
-	flag.Parse()
-
-	// Set verbosity: --verbose=true == --verbosity=1
 	if myLog.verbosity > 0 {
 		verbose = true
-	} else if verbose == true {
-		myLog.verbosity = 1
 	}
 
-	if len(flag.Args()) == 0 {
-		// TODO: more helpful usage statement
-		myLog.Println(-1, "Usage:", os.Args[0],
-			"[options] base_directory|file...")
-		os.Exit(0)
-	}
-
-	// Change log format for benchmarking
-	if *timings {
-		myLog.SetBenchFlags()
-	}
-
+	var results Results
 	data.sizeGroups = make(map[int64]*FileObjList)
+
 	myLog.Println(1, "* Reading file metadata")
 
-	for _, root := range flag.Args() {
+	for _, root := range dirs {
 		if err := filepath.Walk(root, visit); err != nil {
-			myLog.Printf(-1, "* Error: could not read file tree:\n")
-			myLog.Printf(-1, "> %v\n", err)
-			os.Exit(1)
+			return results, fmt.Errorf("could not read file tree: %v", err)
 		}
 	}
 
 	// Count empty files and drop them if they should be ignored
-	emptyCount := data.dropEmptyFiles(ignoreEmpty)
+	emptyCount := data.dropEmptyFiles(options.IgnoreEmpty)
 
 	// Display a small report
 	if verbose {
@@ -562,12 +528,12 @@ func main() {
 	if len(data.emptyFiles) > 0 {
 		result = append(result, data.emptyFiles)
 	}
-	result = append(result, data.findDupes(skipPartial)...)
+	result = append(result, data.findDupes(options.SkipPartial)...)
 
 	myLog.Println(3, "* Number of match groups:", len(result))
 
 	// Done!  Prepare results data
-	if len(result) > 0 && !summary {
+	if len(result) > 0 && !options.Summary {
 		myLog.Println(1, "* Dupes:")
 	}
 
@@ -577,8 +543,6 @@ func main() {
 	}
 	// Sort groups by increasing size (of the duplicated files)
 	sort.Sort(byGroupFileSize(result))
-
-	var results Results
 
 	for _, l := range result {
 		size := uint64(l[0].Size())
@@ -595,6 +559,58 @@ func main() {
 	results.RedundantDataSizeH = formatSize(results.RedundantDataSize, true)
 	results.TotalFileCount = data.cmpt
 
+	return results, nil
+}
+
+// It all starts here.
+func main() {
+	var verbose bool
+	var options Options
+
+	// Assertion on constant values
+	if minSizePartialChecksum <= 2*medsumBytes {
+		myLog.Fatal("Internal error: assert minSizePartialChecksum > 2*medsumBytes")
+	}
+
+	// Command line parameters parsingg
+	flag.BoolVar(&verbose, "verbose", false, "Be verbose (verbosity=1)")
+	flag.BoolVar(&verbose, "v", false, "See --verbose")
+	flag.BoolVar(&options.OutToJSON, "json", false, "Use JSON format for output")
+	flag.BoolVar(&options.Summary, "summary", false, "Do not display the duplicate list")
+	flag.BoolVar(&options.Summary, "s", false, "See --summary")
+	flag.BoolVar(&options.SkipPartial, "skip-partial", false, "Skip partial checksums")
+	flag.IntVar(&myLog.verbosity, "verbosity", 0,
+		"Set verbosity level (1-6)")
+	flag.IntVar(&myLog.verbosity, "vl", 0, "See verbosity")
+	timings := flag.Bool("timings", false, "Set detailed log timings")
+	flag.BoolVar(&options.IgnoreEmpty, "no-empty", false, "Ignore empty files")
+
+	flag.Parse()
+
+	// Set verbosity: --verbose=true == --verbosity=1
+	if myLog.verbosity > 0 {
+		verbose = true
+	} else if verbose == true {
+		myLog.verbosity = 1
+	}
+
+	if len(flag.Args()) == 0 {
+		// TODO: more helpful usage statement
+		myLog.Println(-1, "Usage:", os.Args[0],
+			"[options] base_directory|file...")
+		os.Exit(0)
+	}
+
+	// Change log format for benchmarking
+	if *timings {
+		myLog.SetBenchFlags()
+	}
+
+	results, err := duf(flag.Args(), options)
+	if err != nil {
+		myLog.Fatal("ERROR: " + err.Error())
+	}
+
 	// Output the results
-	displayResults(results, outToJSON, summary)
+	displayResults(results, options.OutToJSON, options.Summary)
 }
