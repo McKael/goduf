@@ -24,6 +24,35 @@ import (
 	"fmt"
 )
 
+// formatSize returns the size in a string with a human-readable format.
+func formatSize(sizeBytes uint64, short bool) string {
+	var units = map[int]string{
+		0: "B",
+		1: "KiB",
+		2: "MiB",
+		3: "GiB",
+		4: "TiB",
+		5: "PiB",
+	}
+	humanSize := sizeBytes
+	var n int
+	for n < len(units)-1 {
+		if humanSize < 10000 {
+			break
+		}
+		humanSize /= 1024
+		n++
+	}
+	if n < 1 {
+		return fmt.Sprintf("%d bytes", sizeBytes)
+	}
+	if short {
+		return fmt.Sprintf("%d %s", humanSize, units[n])
+	}
+	return fmt.Sprintf("%d bytes (%d %s)", sizeBytes, humanSize, units[n])
+}
+
+// displayResults formats results to plaintext or JSON and sends them to stdout
 func displayResults(results Results, jsonOutput bool, summaryOnly bool) {
 	if jsonOutput {
 		displayResultsJSON(results)
