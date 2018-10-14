@@ -51,6 +51,22 @@ const (
 	partialChecksum
 )
 
+// Results contains the results of the duplicates search
+type Results struct {
+	Groups             []ResultSet `json:"groups"`
+	Duplicates         uint        `json:"duplicates"`
+	NumberOfSets       uint        `json:"number_of_sets"`
+	RedundantDataSize  uint64      `json:"redundant_data_size"`
+	RedundantDataSizeH string      `json:"redundant_data_size_h"`
+	TotalFileCount     uint        `json:"total_file_count"`
+}
+
+// ResultSet contains a group of identical duplicate files
+type ResultSet struct {
+	Size  uint64   `json:"size"`  // Size of each item
+	Paths []string `json:"paths"` // List of file paths
+}
+
 type fileObj struct {
 	//Unique   bool
 	FilePath string
@@ -455,6 +471,7 @@ func formatSize(sizeBytes uint64, short bool) string {
 func main() {
 	var verbose bool
 	var summary bool
+	var outToJSON bool
 	var skipPartial bool
 	var ignoreEmpty bool
 
@@ -466,6 +483,7 @@ func main() {
 	// Command line parameters parsingg
 	flag.BoolVar(&verbose, "verbose", false, "Be verbose (verbosity=1)")
 	flag.BoolVar(&verbose, "v", false, "See --verbose")
+	flag.BoolVar(&outToJSON, "json", false, "Use JSON format for output")
 	flag.BoolVar(&summary, "summary", false, "Do not display the duplicate list")
 	flag.BoolVar(&summary, "s", false, "See --summary")
 	flag.BoolVar(&skipPartial, "skip-partial", false, "Skip partial checksums")
@@ -548,7 +566,7 @@ func main() {
 
 	myLog.Println(3, "* Number of match groups:", len(result))
 
-	// Done!  Dump dupes
+	// Done!  Prepare results data
 	if len(result) > 0 && !summary {
 		myLog.Println(1, "* Dupes:")
 	}
@@ -560,37 +578,23 @@ func main() {
 	// Sort groups by increasing size (of the duplicated files)
 	sort.Sort(byGroupFileSize(result))
 
-	var dupeSize uint64
-	data.cmpt = 0
-	for i, l := range result {
+	var results Results
+
+	for _, l := range result {
 		size := uint64(l[0].Size())
 		// We do not count the size of the 1st item
 		// so we get only duplicate size.
-		dupeSize += size * uint64(len(l)-1)
-		if !summary {
-			fmt.Printf("\nGroup #%d (%d files * %v):\n", i+1,
-				len(l), formatSize(size, true))
-		}
+		results.RedundantDataSize += size * uint64(len(l)-1)
+		newSet := ResultSet{Size: size}
 		for _, f := range l {
-			if !summary {
-				fmt.Println(f.FilePath)
-			}
-			data.cmpt++
+			newSet.Paths = append(newSet.Paths, f.FilePath)
+			results.Duplicates++
 		}
+		results.Groups = append(results.Groups, newSet)
 	}
-	summaryLevel := 1 // Default verbosity for the summary line
-	if summary == false {
-		// Add a trailing newline
-		if len(result) > 0 {
-			fmt.Println("")
-		}
-	} else {
-		// The summary is requested so we lower the verbosity level
-		summaryLevel = 0
-	}
+	results.RedundantDataSizeH = formatSize(results.RedundantDataSize, true)
+	results.TotalFileCount = data.cmpt
 
-	myLog.Println(summaryLevel, "Final count:", data.cmpt,
-		"duplicate files in", len(result), "sets")
-	myLog.Println(summaryLevel, "Redundant data size:",
-		formatSize(dupeSize, false))
+	// Output the results
+	displayResults(results, outToJSON, summary)
 }
