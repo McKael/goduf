@@ -51,6 +51,7 @@ const (
 	partialChecksum
 )
 
+// Options contains the command-line flags
 type Options struct {
 	Summary     bool
 	OutToJSON   bool
@@ -579,11 +580,10 @@ func main() {
 	flag.BoolVar(&options.Summary, "summary", false, "Do not display the duplicate list")
 	flag.BoolVar(&options.Summary, "s", false, "See --summary")
 	flag.BoolVar(&options.SkipPartial, "skip-partial", false, "Skip partial checksums")
-	flag.IntVar(&myLog.verbosity, "verbosity", 0,
-		"Set verbosity level (1-6)")
-	flag.IntVar(&myLog.verbosity, "vl", 0, "See verbosity")
-	timings := flag.Bool("timings", false, "Set detailed log timings")
 	flag.BoolVar(&options.IgnoreEmpty, "no-empty", false, "Ignore empty files")
+	flag.IntVar(&myLog.verbosity, "verbosity", 0, "Set verbosity level (1-6)")
+	flag.IntVar(&myLog.verbosity, "vl", 0, "See verbosity")
+	timings := flag.Bool("timings", false, "Show detailed log timings")
 
 	flag.Parse()
 
