@@ -62,7 +62,7 @@ func displayResults(results Results, jsonOutput bool, summaryOnly bool) {
 	if !summaryOnly {
 		for i, g := range results.Groups {
 			fmt.Printf("\nGroup #%d (%d files * %v):\n", i+1,
-				len(g.Paths), formatSize(g.Size, true))
+				len(g.Paths), formatSize(g.FileSize, true))
 			for _, f := range g.Paths {
 				fmt.Println(f)
 			}
@@ -81,7 +81,7 @@ func displayResults(results Results, jsonOutput bool, summaryOnly bool) {
 	myLog.Println(0, "Final count:", results.Duplicates,
 		"duplicate files in", len(results.Groups), "sets")
 	myLog.Println(0, "Redundant data size:",
-		formatSize(results.RedundantDataSize, false))
+		formatSize(results.RedundantDataSizeBytes, false))
 }
 
 func displayResultsJSON(results Results) {

@@ -61,20 +61,20 @@ type Options struct {
 
 // Results contains the results of the duplicates search
 type Results struct {
-	Groups             []ResultSet `json:"groups"`                // List of duplicate sets
-	Duplicates         uint        `json:"duplicates"`            // Number of duplicates
-	NumberOfSets       uint        `json:"number_of_sets"`        // Number of duplicate sets
-	RedundantDataSize  uint64      `json:"redundant_data_size"`   // Redundant data size
-	RedundantDataSizeH string      `json:"redundant_data_size_h"` // Same, human-readable
-	TotalFileCount     uint        `json:"total_file_count"`      // Total number of checked files
-	TotalSize          uint64      `json:"total_size"`            // Total size for checked files
-	TotalSizeH         string      `json:"total_size_h"`          // Same, human-readable
+	Groups                 []ResultSet `json:"groups"`                    // List of duplicate sets
+	Duplicates             uint        `json:"duplicates"`                // Number of duplicates
+	NumberOfSets           uint        `json:"number_of_sets"`            // Number of duplicate sets
+	RedundantDataSizeBytes uint64      `json:"redundant_data_size_bytes"` // Redundant data size
+	RedundantDataSizeHuman string      `json:"redundant_data_size_human"` // Same, human-readable
+	TotalFileCount         uint        `json:"total_file_count"`          // Total number of checked files
+	TotalSizeBytes         uint64      `json:"total_size_bytes"`          // Total size for checked files
+	TotalSizeHuman         string      `json:"total_size_human"`          // Same, human-readable
 }
 
 // ResultSet contains a group of identical duplicate files
 type ResultSet struct {
-	Size  uint64   `json:"size"`  // Size of each item
-	Paths []string `json:"paths"` // List of file paths
+	FileSize uint64   `json:"file_size"` // Size of each item
+	Paths    []string `json:"paths"`     // List of file paths
 }
 
 type fileObj struct {
@@ -523,8 +523,8 @@ func duf(dirs []string, options Options) (Results, error) {
 		size := uint64(l[0].Size())
 		// We do not count the size of the 1st item
 		// so we get only duplicate size.
-		results.RedundantDataSize += size * uint64(len(l)-1)
-		newSet := ResultSet{Size: size}
+		results.RedundantDataSizeBytes += size * uint64(len(l)-1)
+		newSet := ResultSet{FileSize: size}
 		for _, f := range l {
 			newSet.Paths = append(newSet.Paths, f.FilePath)
 			results.Duplicates++
@@ -532,10 +532,10 @@ func duf(dirs []string, options Options) (Results, error) {
 		results.Groups = append(results.Groups, newSet)
 	}
 	results.NumberOfSets = uint(len(results.Groups))
-	results.RedundantDataSizeH = formatSize(results.RedundantDataSize, true)
+	results.RedundantDataSizeHuman = formatSize(results.RedundantDataSizeBytes, true)
 	results.TotalFileCount = data.cmpt
-	results.TotalSize = data.totalSize
-	results.TotalSizeH = formatSize(data.totalSize, true)
+	results.TotalSizeBytes = data.totalSize
+	results.TotalSizeHuman = formatSize(data.totalSize, true)
 
 	return results, nil
 }
