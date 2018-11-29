@@ -508,7 +508,7 @@ func duf(dirs []string, options Options) (Results, error) {
 	myLog.Println(3, "* Number of match groups:", len(result))
 
 	// Done!  Prepare results data
-	if len(result) > 0 && !options.Summary {
+	if len(result) > 0 && !options.Summary && !options.OutToJSON {
 		myLog.Println(1, "* Dupes:")
 	}
 
