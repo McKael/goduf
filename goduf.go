@@ -508,8 +508,12 @@ func duf(dirs []string, options Options) (Results, error) {
 	myLog.Println(3, "* Number of match groups:", len(result))
 
 	// Done!  Prepare results data
-	if len(result) > 0 && !options.Summary && !options.OutToJSON {
-		myLog.Println(1, "* Dupes:")
+	if len(result) > 0 && !options.Summary {
+		if options.OutToJSON {
+			myLog.Println(1, "* Dumping dupes as JSON...")
+		} else {
+			myLog.Println(1, "* Dupes:")
+		}
 	}
 
 	// Sort files by path inside each group
