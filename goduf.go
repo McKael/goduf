@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Mikael Berthe <mikael@lilotux.net>
+ * Copyright (C) 2014-2022 Mikael Berthe <mikael@lilotux.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -73,8 +73,9 @@ type Results struct {
 
 // ResultSet contains a group of identical duplicate files
 type ResultSet struct {
-	FileSize uint64   `json:"file_size"` // Size of each item
-	Paths    []string `json:"paths"`     // List of file paths
+	FileSize uint64              `json:"file_size"`       // Size of each item
+	Paths    []string            `json:"paths"`           // List of file paths
+	Links    map[string][]string `json:"links,omitempty"` // Existing hard links
 }
 
 type fileObj struct {
@@ -96,6 +97,7 @@ type dataT struct {
 	sizeGroups  map[int64]*FileObjList
 	emptyFiles  FileObjList
 	ignoreCount int
+	hardLinks   map[string][]string
 }
 
 var data dataT
@@ -411,19 +413,20 @@ func (data *dataT) initialCleanup() (hardLinkCount, uniqueSizeCount int) {
 		// TODO: Should we also check for duplicate paths?
 		for {
 			type devinode struct{ dev, ino uint64 }
-			devinodes := make(map[devinode]bool)
+			devinodes := make(map[devinode]string)
 			var hardLinkIndex int
 
 			for i, fo := range *sgListP {
 				dev, ino := GetDevIno(fo)
 				di := devinode{dev, ino}
-				if _, hlink := devinodes[di]; hlink {
+				if primaryPath, ok := devinodes[di]; ok {
 					hardLinkIndex = i
 					hardLinkCount++
 					hardlinksFound = true
+					data.hardLinks[primaryPath] = append(data.hardLinks[primaryPath], fo.FilePath)
 					break
 				} else {
-					devinodes[di] = true
+					devinodes[di] = fo.FilePath
 				}
 			}
 
@@ -457,6 +460,7 @@ func duf(dirs []string, options Options) (Results, error) {
 
 	var results Results
 	data.sizeGroups = make(map[int64]*FileObjList)
+	data.hardLinks = make(map[string][]string)
 
 	myLog.Println(1, "* Reading file metadata")
 
@@ -523,6 +527,7 @@ func duf(dirs []string, options Options) (Results, error) {
 	// Sort groups by increasing size (of the duplicated files)
 	sort.Sort(byGroupFileSize(result))
 
+	// Build the result duplicate sets
 	for _, l := range result {
 		size := uint64(l[0].Size())
 		// We do not count the size of the 1st item
@@ -532,6 +537,12 @@ func duf(dirs []string, options Options) (Results, error) {
 		for _, f := range l {
 			newSet.Paths = append(newSet.Paths, f.FilePath)
 			results.Duplicates++
+			if len(data.hardLinks[f.FilePath]) > 0 {
+				if newSet.Links == nil {
+					newSet.Links = make(map[string][]string)
+				}
+				newSet.Links[f.FilePath] = data.hardLinks[f.FilePath]
+			}
 		}
 		results.Groups = append(results.Groups, newSet)
 	}

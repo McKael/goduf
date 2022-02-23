@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Mikael Berthe <mikael@lilotux.net>
+ * Copyright (C) 2014-2022 Mikael Berthe <mikael@lilotux.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -65,6 +65,11 @@ func displayResults(results Results, jsonOutput bool, summaryOnly bool) {
 				len(g.Paths), formatSize(g.FileSize, true))
 			for _, f := range g.Paths {
 				fmt.Println(f)
+				if g.Links != nil { // Display linked files
+					for _, lf := range g.Links[f] {
+						fmt.Printf(" %s\n", lf)
+					}
+				}
 			}
 		}
 	}
